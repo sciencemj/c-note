@@ -51,20 +51,22 @@ export const Notebook: React.FC = () => {
   };
 
   const executeCell = useCallback(async (id: string) => {
-    const currentCells = cellsRef.current;
-    setCells(currentCells.map(cell => 
+    // Use functional updaters for setCells to avoid stale state during executeAll
+    setCells(prev => prev.map(cell =>
       cell.id === id ? { ...cell, status: 'running', output: null, error: null } : cell
     ));
     setAutoFixMessages([]);
 
     try {
+      // Read cell data from ref for building the execution context
+      const currentCells = cellsRef.current;
       const targetIndex = currentCells.findIndex(c => c.id === id);
       const executionContext = currentCells.slice(0, targetIndex + 1).map(c => c.code);
 
       const response = await fetch(`${API_URL}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           cells: executionContext,
           autoFixSemicolonsEnabled: autoFixSemicolons
         }),
@@ -82,7 +84,7 @@ export const Notebook: React.FC = () => {
         setAutoFixMessages(data.autoFixApplied);
       }
 
-      setCells(cellsRef.current.map((cell, idx) => {
+      setCells(prev => prev.map((cell, idx) => {
         // Apply auto-fixed code back to cells
         const fixedCode = data.fixedCells && idx <= targetIndex
           ? data.fixedCells[idx]
@@ -106,11 +108,11 @@ export const Notebook: React.FC = () => {
         return cell;
       }));
     } catch (err) {
-      setCells(cellsRef.current.map(cell => 
-        cell.id === id ? { 
-          ...cell, 
-          status: 'error', 
-          error: err instanceof Error ? err.message : 'Unknown error occurred' 
+      setCells(prev => prev.map(cell =>
+        cell.id === id ? {
+          ...cell,
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Unknown error occurred'
         } : cell
       ));
     }
