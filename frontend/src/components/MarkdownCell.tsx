@@ -105,10 +105,11 @@ export const MarkdownCell: React.FC<MarkdownCellProps> = ({ cell, onChange, onDe
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
       const value = cell.code;
-      onChange(cell.id, value.substring(0, start) + '\t' + value.substring(end));
+      const indent = '    '; // 4 spaces
+      onChange(cell.id, value.substring(0, start) + indent + value.substring(end));
       // Restore cursor position after React re-render
       requestAnimationFrame(() => {
-        textarea.selectionStart = textarea.selectionEnd = start + 1;
+        textarea.selectionStart = textarea.selectionEnd = start + indent.length;
       });
     }
   };
