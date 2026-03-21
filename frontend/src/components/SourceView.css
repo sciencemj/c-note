@@ -58,6 +58,24 @@
   text-transform: uppercase;
 }
 
+.source-view-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.source-action-button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem !important;
+  padding: 5px 10px !important;
+  white-space: nowrap;
+}
+
+.source-action-button span {
+  font-weight: 500;
+}
+
 .source-view-close {
   background: transparent !important;
   border: none !important;

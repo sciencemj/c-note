@@ -18,6 +18,7 @@ export const Notebook: React.FC = () => {
     }
   ]);
 
+  const [noteName, setNoteName] = useState('Untitled');
   const [autoFixSemicolons, setAutoFixSemicolons] = useState(true);
   const [generatedSource, setGeneratedSource] = useState<string | null>(null);
   const [showSourceView, setShowSourceView] = useState(false);
@@ -151,6 +152,14 @@ export const Notebook: React.FC = () => {
         <div className="logo-container">
           <div className="logo-icon">C</div>
           <h1>C-Note</h1>
+          <span className="note-name-separator">/</span>
+          <input
+            className="note-name-input"
+            value={noteName}
+            onChange={(e) => setNoteName(e.target.value)}
+            placeholder="Untitled"
+            spellCheck={false}
+          />
         </div>
         <div className="header-actions">
           {/* Auto-fix semicolons toggle */}
@@ -214,9 +223,10 @@ export const Notebook: React.FC = () => {
 
       {/* Source View Modal */}
       {showSourceView && generatedSource && (
-        <SourceView 
-          code={generatedSource} 
-          onClose={() => setShowSourceView(false)} 
+        <SourceView
+          code={generatedSource}
+          fileName={noteName || 'Untitled'}
+          onClose={() => setShowSourceView(false)}
         />
       )}
     </div>

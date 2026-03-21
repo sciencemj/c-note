@@ -44,6 +44,37 @@
   -webkit-text-fill-color: transparent;
 }
 
+.note-name-separator {
+  color: var(--text-secondary);
+  opacity: 0.4;
+  font-size: 1.2rem;
+  font-weight: 300;
+  user-select: none;
+}
+
+.note-name-input {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 6px;
+  outline: none;
+  min-width: 80px;
+  max-width: 200px;
+  transition: all 0.2s ease;
+}
+
+.note-name-input:hover {
+  border-color: var(--border-color);
+}
+
+.note-name-input:focus {
+  border-color: var(--accent-color);
+  background: var(--surface-hover);
+}
+
 .notebook-content {
   display: flex;
   flex-direction: column;
