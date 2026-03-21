@@ -8,6 +8,10 @@
 
 C-Note is an interactive, notebook-style environment for C programming. It's designed to make learning, testing, and experimenting with C code as effortless as writing in a modern notebook.
 
+<p align="center">
+  <img src="example.jpg" alt="C-Note Example" width="600" />
+</p>
+
 ## 🚀 What is this project for?
 
 C-Note bridges the gap between the low-level power of C and the interactive ease of notebooks like Jupyter.
