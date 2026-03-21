@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+      - "3001:3001"
+    volumes:
+      - ./frontend:/app/frontend
+      - ./backend:/app/backend
+    # Start both the frontend (dev) and the backend (dev) processes concurrently using a simple shell trick
+    command: /bin/sh -c "cd /app/backend && bun install && bun run --watch server.ts & cd /app/frontend && bun install && bun run dev --host 0.0.0.0"
+    environment:
+      - NODE_ENV=development
