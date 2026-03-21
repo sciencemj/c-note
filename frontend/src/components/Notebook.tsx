@@ -107,29 +107,41 @@ export const Notebook: React.FC = () => {
         setAutoFixMessages(data.autoFixApplied);
       }
 
-      setCells(prev => prev.map((cell, idx) => {
-        // Apply auto-fixed code back to cells
-        const fixedCode = data.fixedCells && idx <= targetIndex
-          ? data.fixedCells[idx]
-          : undefined;
-
-        if (cell.id === id) {
-          return {
-            ...cell,
-            code: fixedCode ?? cell.code,
-            status: response.ok && !data.error ? 'success' : (data.error ? 'error' : 'success'),
-            output: data.output || null,
-            error: data.error || null
-          };
+      setCells(prev => {
+        // fixedCells indices correspond to code-only cells, not the full array.
+        // Build a mapping from full-array index to code-only index.
+        const codeOnlyIndexMap = new Map<number, number>();
+        let codeIdx = 0;
+        for (let i = 0; i <= targetIndex && i < prev.length; i++) {
+          if (prev[i].type !== 'markdown') {
+            codeOnlyIndexMap.set(i, codeIdx++);
+          }
         }
 
-        // Update code for earlier cells if they were also fixed
-        if (fixedCode !== undefined) {
-          return { ...cell, code: fixedCode };
-        }
+        return prev.map((cell, idx) => {
+          const fixedCodeIdx = codeOnlyIndexMap.get(idx);
+          const fixedCode = data.fixedCells && fixedCodeIdx !== undefined
+            ? data.fixedCells[fixedCodeIdx]
+            : undefined;
 
-        return cell;
-      }));
+          if (cell.id === id) {
+            return {
+              ...cell,
+              code: fixedCode ?? cell.code,
+              status: response.ok && !data.error ? 'success' : (data.error ? 'error' : 'success'),
+              output: data.output || null,
+              error: data.error || null
+            };
+          }
+
+          // Update code for earlier cells if they were also fixed
+          if (fixedCode !== undefined) {
+            return { ...cell, code: fixedCode };
+          }
+
+          return cell;
+        });
+      });
     } catch (err) {
       setCells(prev => prev.map(cell =>
         cell.id === id ? {
@@ -141,26 +153,40 @@ export const Notebook: React.FC = () => {
     }
   }, [autoFixSemicolons]);
 
-  const handleShiftEnter = useCallback((id: string) => {
-    executeCell(id);
-
+  const focusNextCodeCell = useCallback((fromId: string) => {
     const currentCells = cellsRef.current;
-    const currentIndex = currentCells.findIndex(c => c.id === id);
-    
-    if (currentIndex < currentCells.length - 1) {
-      const nextCellId = currentCells[currentIndex + 1].id;
-      setTimeout(() => {
-        const nextEl = document.querySelector(`[data-cell-id="${nextCellId}"] .cm-editor .cm-content`);
-        if (nextEl instanceof HTMLElement) nextEl.focus();
-      }, 100);
-    } else {
-      const newId = addCell(currentIndex);
-      setTimeout(() => {
-        const newEl = document.querySelector(`[data-cell-id="${newId}"] .cm-editor .cm-content`);
-        if (newEl instanceof HTMLElement) newEl.focus();
-      }, 100);
+    const currentIndex = currentCells.findIndex(c => c.id === fromId);
+
+    // Find the next code cell, skipping markdown cells
+    for (let i = currentIndex + 1; i < currentCells.length; i++) {
+      if (currentCells[i].type !== 'markdown') {
+        const nextId = currentCells[i].id;
+        setTimeout(() => {
+          const el = document.querySelector(`[data-cell-id="${nextId}"] .cm-editor .cm-content`);
+          if (el instanceof HTMLElement) el.focus();
+        }, 100);
+        return;
+      }
     }
-  }, [executeCell]);
+
+    // No code cell found after — create a new one at the end
+    const newId = addCell(currentCells.length - 1, 'code');
+    setTimeout(() => {
+      const el = document.querySelector(`[data-cell-id="${newId}"] .cm-editor .cm-content`);
+      if (el instanceof HTMLElement) el.focus();
+    }, 100);
+  }, []);
+
+  const handleShiftEnter = useCallback((id: string) => {
+    const cell = cellsRef.current.find(c => c.id === id);
+
+    // For code cells: execute then move to next code cell
+    if (cell?.type !== 'markdown') {
+      executeCell(id);
+    }
+
+    focusNextCodeCell(id);
+  }, [executeCell, focusNextCodeCell]);
 
   const executeAll = async () => {
     for (const cell of cellsRef.current) {
@@ -286,6 +312,7 @@ export const Notebook: React.FC = () => {
                 cell={cell}
                 onChange={updateCellCode}
                 onDelete={deleteCell}
+                onShiftEnter={handleShiftEnter}
               />
             ) : (
               <CodeCell

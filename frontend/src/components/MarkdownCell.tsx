@@ -7,6 +7,7 @@ interface MarkdownCellProps {
   cell: CellData;
   onChange: (id: string, code: string) => void;
   onDelete: (id: string) => void;
+  onShiftEnter: (id: string) => void;
 }
 
 // Simple markdown to HTML renderer
@@ -61,7 +62,7 @@ function renderMarkdown(md: string): string {
   return html;
 }
 
-export const MarkdownCell: React.FC<MarkdownCellProps> = ({ cell, onChange, onDelete }) => {
+export const MarkdownCell: React.FC<MarkdownCellProps> = ({ cell, onChange, onDelete, onShiftEnter }) => {
   const [editing, setEditing] = useState(!cell.code);
   const [isHovered, setIsHovered] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -83,9 +84,32 @@ export const MarkdownCell: React.FC<MarkdownCellProps> = ({ cell, onChange, onDe
     autoResize(e.target);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') {
       setEditing(false);
+      return;
+    }
+
+    // Shift+Enter: switch to preview and move to next code cell
+    if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault();
+      setEditing(false);
+      onShiftEnter(cell.id);
+      return;
+    }
+
+    // Tab: insert \t instead of moving focus
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = e.currentTarget;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const value = cell.code;
+      onChange(cell.id, value.substring(0, start) + '\t' + value.substring(end));
+      // Restore cursor position after React re-render
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 1;
+      });
     }
   };
 
@@ -124,7 +148,6 @@ export const MarkdownCell: React.FC<MarkdownCellProps> = ({ cell, onChange, onDe
             value={cell.code}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            onBlur={() => { if (cell.code.trim()) setEditing(false); }}
             placeholder="Write markdown here..."
             rows={3}
           />
