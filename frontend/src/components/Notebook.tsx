@@ -2,8 +2,19 @@ import { useState, useCallback, useRef } from 'react';
 import { CodeCell } from './CodeCell';
 import type { CellData } from './CodeCell';
 import { SourceView } from './SourceView';
-import { Plus, Code2, Wrench } from 'lucide-react';
+import { Plus, Code2, Wrench, Save, FolderOpen } from 'lucide-react';
 import './Notebook.css';
+
+interface CNoteSaveFile {
+  version: 1;
+  name: string;
+  cells: Array<{
+    id: string;
+    code: string;
+    output: string | null;
+    error: string | null;
+  }>;
+}
 
 const API_URL = 'http://localhost:3001';
 
@@ -146,6 +157,57 @@ export const Notebook: React.FC = () => {
     }
   };
 
+  const handleSave = () => {
+    const saveData: CNoteSaveFile = {
+      version: 1,
+      name: noteName,
+      cells: cellsRef.current.map(cell => ({
+        id: cell.id,
+        code: cell.code,
+        output: cell.output,
+        error: cell.error,
+      })),
+    };
+    const safeName = (noteName || 'Untitled').replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const blob = new Blob([JSON.stringify(saveData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${safeName}.cnote`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleLoad = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.cnote';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text) as CNoteSaveFile;
+        if (!data.version || !data.cells || !Array.isArray(data.cells)) {
+          throw new Error('Invalid .cnote file');
+        }
+        setNoteName(data.name || 'Untitled');
+        setCells(data.cells.map(cell => ({
+          id: cell.id || crypto.randomUUID(),
+          code: cell.code,
+          output: cell.output,
+          error: cell.error,
+          status: (cell.error ? 'error' : cell.output ? 'success' : 'idle') as CellData['status'],
+        })));
+        setGeneratedSource(null);
+        setAutoFixMessages([]);
+      } catch {
+        alert('Failed to load file. Make sure it is a valid .cnote file.');
+      }
+    };
+    input.click();
+  };
+
   return (
     <div className="notebook-container">
       <header className="notebook-header glass-panel">
@@ -160,6 +222,12 @@ export const Notebook: React.FC = () => {
             placeholder="Untitled"
             spellCheck={false}
           />
+          <button className="glass-button note-file-button" onClick={handleSave} title="Save as .cnote file">
+            <Save size={14} />
+          </button>
+          <button className="glass-button note-file-button" onClick={handleLoad} title="Load .cnote file">
+            <FolderOpen size={14} />
+          </button>
         </div>
         <div className="header-actions">
           {/* Auto-fix semicolons toggle */}
