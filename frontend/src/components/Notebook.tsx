@@ -317,6 +317,10 @@ export const Notebook: React.FC = () => {
             ) : (
               <CodeCell
                 cell={cell}
+                previousCode={cells
+                  .slice(0, index)
+                  .filter(c => c.type !== 'markdown')
+                  .map(c => c.code)}
                 onChange={updateCellCode}
                 onExecute={executeCell}
                 onDelete={deleteCell}
