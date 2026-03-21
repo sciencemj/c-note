@@ -3,7 +3,7 @@ import { CodeCell } from './CodeCell';
 import type { CellData } from './CodeCell';
 import { MarkdownCell } from './MarkdownCell';
 import { SourceView } from './SourceView';
-import { Plus, Code2, Wrench, Save, FolderOpen, Type } from 'lucide-react';
+import { Plus, Code2, Wrench, Save, FolderOpen, Type, GripVertical } from 'lucide-react';
 import './Notebook.css';
 
 interface CNoteSaveFile {
@@ -37,6 +37,8 @@ export const Notebook: React.FC = () => {
   const [generatedSource, setGeneratedSource] = useState<string | null>(null);
   const [showSourceView, setShowSourceView] = useState(false);
   const [autoFixMessages, setAutoFixMessages] = useState<string[]>([]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
@@ -64,6 +66,36 @@ export const Notebook: React.FC = () => {
     if (cellsRef.current.length > 1) {
       setCells(cellsRef.current.filter(cell => cell.id !== id));
     }
+  };
+
+  const handleDragStart = (index: number) => {
+    setDragIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === dropIndex) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const newCells = [...cellsRef.current];
+    const [moved] = newCells.splice(dragIndex, 1);
+    newCells.splice(dropIndex, 0, moved);
+    setCells(newCells);
+    setDragIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDragIndex(null);
+    setDragOverIndex(null);
   };
 
   const executeCell = useCallback(async (id: string) => {
@@ -306,27 +338,44 @@ export const Notebook: React.FC = () => {
 
       <main className="notebook-content">
         {cells.map((cell, index) => (
-          <div key={cell.id} className="cell-wrapper" data-cell-id={cell.id}>
-            {cell.type === 'markdown' ? (
-              <MarkdownCell
-                cell={cell}
-                onChange={updateCellCode}
-                onDelete={deleteCell}
-                onShiftEnter={handleShiftEnter}
-              />
-            ) : (
-              <CodeCell
-                cell={cell}
-                previousCode={cells
-                  .slice(0, index)
-                  .filter(c => c.type !== 'markdown')
-                  .map(c => c.code)}
-                onChange={updateCellCode}
-                onExecute={executeCell}
-                onDelete={deleteCell}
-                onShiftEnter={handleShiftEnter}
-              />
-            )}
+          <div
+            key={cell.id}
+            className={`cell-wrapper ${dragIndex === index ? 'dragging' : ''} ${dragOverIndex === index && dragIndex !== index ? 'drag-over' : ''}`}
+            data-cell-id={cell.id}
+            onDragOver={(e) => handleDragOver(e, index)}
+            onDrop={(e) => handleDrop(e, index)}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="cell-with-handle">
+              <div
+                className="drag-handle"
+                draggable
+                onDragStart={() => handleDragStart(index)}
+                title="Drag to reorder"
+              >
+                <GripVertical size={16} />
+              </div>
+              {cell.type === 'markdown' ? (
+                <MarkdownCell
+                  cell={cell}
+                  onChange={updateCellCode}
+                  onDelete={deleteCell}
+                  onShiftEnter={handleShiftEnter}
+                />
+              ) : (
+                <CodeCell
+                  cell={cell}
+                  previousCode={cells
+                    .slice(0, index)
+                    .filter(c => c.type !== 'markdown')
+                    .map(c => c.code)}
+                  onChange={updateCellCode}
+                  onExecute={executeCell}
+                  onDelete={deleteCell}
+                  onShiftEnter={handleShiftEnter}
+                />
+              )}
+            </div>
 
             <div className="add-cell-divider">
               <button

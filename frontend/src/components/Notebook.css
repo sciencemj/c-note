@@ -94,6 +94,51 @@
 
 .cell-wrapper {
   position: relative;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.cell-wrapper.dragging {
+  opacity: 0.4;
+}
+
+.cell-wrapper.drag-over {
+  border-top: 2px solid var(--accent-color);
+}
+
+.cell-with-handle {
+  display: flex;
+  align-items: stretch;
+}
+
+.cell-with-handle > .cell-container {
+  flex: 1;
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  cursor: grab;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.2s ease, color 0.2s ease;
+  flex-shrink: 0;
+  user-select: none;
+  margin-right: -4px;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.cell-wrapper:hover .drag-handle {
+  opacity: 0.5;
+}
+
+.drag-handle:hover {
+  opacity: 1 !important;
+  color: var(--accent-color);
 }
 
 .add-cell-divider {
