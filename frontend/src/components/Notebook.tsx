@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef } from 'react';
 import { CodeCell } from './CodeCell';
 import type { CellData } from './CodeCell';
+import { MarkdownCell } from './MarkdownCell';
 import { SourceView } from './SourceView';
-import { Plus, Code2, Wrench, Save, FolderOpen } from 'lucide-react';
+import { Plus, Code2, Wrench, Save, FolderOpen, Type } from 'lucide-react';
 import './Notebook.css';
 
 interface CNoteSaveFile {
@@ -10,6 +11,7 @@ interface CNoteSaveFile {
   name: string;
   cells: Array<{
     id: string;
+    type?: 'code' | 'markdown';
     code: string;
     output: string | null;
     error: string | null;
@@ -22,6 +24,7 @@ export const Notebook: React.FC = () => {
   const [cells, setCells] = useState<CellData[]>([
     {
       id: crypto.randomUUID(),
+      type: 'code',
       code: '#include <stdio.h>\n\nprintf("Welcome to C-Note!\\n");',
       output: null,
       error: null,
@@ -38,9 +41,10 @@ export const Notebook: React.FC = () => {
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
 
-  const addCell = (index: number): string => {
+  const addCell = (index: number, type: 'code' | 'markdown' = 'code'): string => {
     const newCell: CellData = {
       id: crypto.randomUUID(),
+      type,
       code: '',
       output: null,
       error: null,
@@ -63,6 +67,10 @@ export const Notebook: React.FC = () => {
   };
 
   const executeCell = useCallback(async (id: string) => {
+    // Skip markdown cells
+    const targetCell = cellsRef.current.find(c => c.id === id);
+    if (targetCell?.type === 'markdown') return;
+
     // Use functional updaters for setCells to avoid stale state during executeAll
     setCells(prev => prev.map(cell =>
       cell.id === id ? { ...cell, status: 'running', output: null, error: null } : cell
@@ -70,10 +78,13 @@ export const Notebook: React.FC = () => {
     setAutoFixMessages([]);
 
     try {
-      // Read cell data from ref for building the execution context
+      // Read cell data from ref for building the execution context (code cells only)
       const currentCells = cellsRef.current;
       const targetIndex = currentCells.findIndex(c => c.id === id);
-      const executionContext = currentCells.slice(0, targetIndex + 1).map(c => c.code);
+      const executionContext = currentCells
+        .slice(0, targetIndex + 1)
+        .filter(c => c.type !== 'markdown')
+        .map(c => c.code);
 
       const response = await fetch(`${API_URL}/execute`, {
         method: 'POST',
@@ -153,6 +164,7 @@ export const Notebook: React.FC = () => {
 
   const executeAll = async () => {
     for (const cell of cellsRef.current) {
+      if (cell.type === 'markdown') continue;
       await executeCell(cell.id);
     }
   };
@@ -163,6 +175,7 @@ export const Notebook: React.FC = () => {
       name: noteName,
       cells: cellsRef.current.map(cell => ({
         id: cell.id,
+        type: cell.type,
         code: cell.code,
         output: cell.output,
         error: cell.error,
@@ -194,6 +207,7 @@ export const Notebook: React.FC = () => {
         setNoteName(data.name || 'Untitled');
         setCells(data.cells.map(cell => ({
           id: cell.id || crypto.randomUUID(),
+          type: cell.type || 'code',
           code: cell.code,
           output: cell.output,
           error: cell.error,
@@ -267,21 +281,38 @@ export const Notebook: React.FC = () => {
       <main className="notebook-content">
         {cells.map((cell, index) => (
           <div key={cell.id} className="cell-wrapper" data-cell-id={cell.id}>
-            <CodeCell
-              cell={cell}
-              onChange={updateCellCode}
-              onExecute={executeCell}
-              onDelete={deleteCell}
-              onShiftEnter={handleShiftEnter}
-            />
-            
+            {cell.type === 'markdown' ? (
+              <MarkdownCell
+                cell={cell}
+                onChange={updateCellCode}
+                onDelete={deleteCell}
+              />
+            ) : (
+              <CodeCell
+                cell={cell}
+                onChange={updateCellCode}
+                onExecute={executeCell}
+                onDelete={deleteCell}
+                onShiftEnter={handleShiftEnter}
+              />
+            )}
+
             <div className="add-cell-divider">
-              <button 
+              <button
                 className="add-cell-button"
-                onClick={() => addCell(index)}
-                aria-label="Add cell below"
+                onClick={() => addCell(index, 'code')}
+                aria-label="Add code cell below"
+                title="Add code cell"
               >
-                <Plus size={20} />
+                <Plus size={16} />
+              </button>
+              <button
+                className="add-cell-button add-md-button"
+                onClick={() => addCell(index, 'markdown')}
+                aria-label="Add markdown cell below"
+                title="Add markdown cell"
+              >
+                <Type size={16} />
               </button>
               <div className="line" />
             </div>

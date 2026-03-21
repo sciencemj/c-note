@@ -6,6 +6,7 @@ import './CodeCell.css';
 
 export interface CellData {
   id: string;
+  type: 'code' | 'markdown';
   code: string;
   output: string | null;
   error: string | null;
