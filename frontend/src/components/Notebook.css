@@ -1,14 +1,27 @@
+/* ─── Layout with sidebar ──────────────────────────────────────────────────── */
+.notebook-layout {
+  display: flex;
+  min-height: 100vh;
+  transition: padding-right 0.3s ease;
+}
+
+.notebook-layout.sidebar-open {
+  padding-right: 252px;
+}
+
 .notebook-container {
   max-width: 1000px;
   margin: 0 auto;
   padding: 2rem 1rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .notebook-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.5rem;
+  padding: 0.75rem 1.25rem;
   margin-bottom: 2rem;
   position: sticky;
   top: 1rem;
@@ -18,7 +31,8 @@
 .logo-container {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .logo-icon {
@@ -36,7 +50,7 @@
 }
 
 .logo-container h1 {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   margin: 0;
   background: linear-gradient(to right, #ffffff, var(--text-secondary));
   -webkit-background-clip: text;
@@ -56,13 +70,13 @@
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-primary);
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 500;
   padding: 2px 8px;
   border-radius: 6px;
   outline: none;
-  min-width: 80px;
-  max-width: 200px;
+  min-width: 60px;
+  max-width: 160px;
   transition: all 0.2s ease;
 }
 
@@ -73,18 +87,6 @@
 .note-name-input:focus {
   border-color: var(--accent-color);
   background: var(--surface-hover);
-}
-
-.note-file-button {
-  padding: 4px 6px !important;
-  min-width: unset !important;
-  border-radius: 6px !important;
-  opacity: 0.5;
-  transition: all 0.2s ease;
-}
-
-.note-file-button:hover {
-  opacity: 1;
 }
 
 .notebook-content {
@@ -193,15 +195,16 @@
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 /* Toggle label */
 .toggle-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
+  gap: 5px;
+  font-size: 0.75rem;
   color: var(--text-secondary);
   cursor: default;
   user-select: none;
@@ -214,8 +217,8 @@
 
 /* Toggle switch */
 .toggle-switch {
-  width: 36px;
-  height: 20px;
+  width: 34px;
+  height: 18px;
   border-radius: 12px;
   background: var(--surface-hover);
   border: 1px solid var(--border-color);
@@ -231,8 +234,8 @@
 }
 
 .toggle-knob {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: white;
   position: absolute;
@@ -250,9 +253,9 @@
 .source-button {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.8rem;
-  padding: 6px 12px !important;
+  gap: 5px;
+  font-size: 0.78rem;
+  padding: 5px 10px !important;
 }
 
 .source-button:disabled {
@@ -262,6 +265,13 @@
 
 .source-button span {
   font-weight: 500;
+}
+
+/* Sidebar toggle button */
+.sidebar-toggle-button {
+  padding: 5px 8px !important;
+  min-width: unset !important;
+  border-radius: 6px !important;
 }
 
 /* Auto-fix notification */
@@ -308,12 +318,6 @@
   color: #ef4444;
 }
 
-.save-as-label {
-  font-size: 0.6rem;
-  font-weight: 600;
-  margin-left: -2px;
-}
-
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -321,4 +325,78 @@
 
 .spin {
   animation: spin 1s linear infinite;
+}
+
+/* ─── Right Sidebar ────────────────────────────────────────────────────────── */
+.sidebar-panel {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  width: 220px;
+  height: calc(100vh - 2rem);
+  padding: 1.5rem 1rem;
+  transform: translateX(calc(100% + 1rem));
+  transition: transform 0.3s ease;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+}
+
+.sidebar-panel.open {
+  transform: translateX(0);
+}
+
+.sidebar-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin: 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.sidebar-button:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-color);
+}
+
+.sidebar-button:active {
+  transform: scale(0.98);
+}
+
+.sidebar-button kbd {
+  margin-left: auto;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 2px 6px;
 }

@@ -3,7 +3,7 @@ import { CodeCell } from './CodeCell';
 import type { CellData } from './CodeCell';
 import { MarkdownCell } from './MarkdownCell';
 import { SourceView } from './SourceView';
-import { Plus, Code2, Wrench, Save, FolderOpen, Type, GripVertical, Check, Loader, ShieldCheck } from 'lucide-react';
+import { Plus, Code2, Wrench, Save, FolderOpen, Type, GripVertical, Check, Loader, ShieldCheck, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import './Notebook.css';
 
 interface CNoteSaveFile {
@@ -46,6 +46,7 @@ export const Notebook: React.FC = () => {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
   const [hasFileHandle, setHasFileHandle] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
@@ -407,152 +408,173 @@ export const Notebook: React.FC = () => {
   }, []);
 
   return (
-    <div className="notebook-container">
-      <header className="notebook-header glass-panel">
-        <div className="logo-container">
-          <div className="logo-icon">C</div>
-          <h1>C-Note</h1>
-          <span className="note-name-separator">/</span>
-          <input
-            className="note-name-input"
-            value={noteName}
-            onChange={(e) => { setNoteName(e.target.value); triggerAutosave(); }}
-            placeholder="Untitled"
-            spellCheck={false}
-          />
-          <button className="glass-button note-file-button" onClick={handleSave} title="Save (Ctrl+S)">
-            <Save size={14} />
-          </button>
-          <button className="glass-button note-file-button" onClick={handleSaveAs} title="Save As...">
-            <Save size={14} /><span className="save-as-label">As</span>
-          </button>
-          <button className="glass-button note-file-button" onClick={handleLoad} title="Open .cnote file">
-            <FolderOpen size={14} />
-          </button>
-          {hasFileHandle && (
-            <span className={`autosave-indicator ${autosaveStatus}`}>
-              {autosaveStatus === 'saving' && <><Loader size={12} className="spin" /> Saving...</>}
-              {autosaveStatus === 'saved' && <><Check size={12} /> Saved</>}
-              {autosaveStatus === 'error' && <>Save failed</>}
-            </span>
-          )}
-        </div>
-        <div className="header-actions">
-          {/* Auto-fix semicolons toggle */}
-          <label className="toggle-label" title="Automatically fix missing semicolons and retry compilation">
-            <Wrench size={14} />
-            <span>Auto-fix ;</span>
-            <div className={`toggle-switch ${autoFixSemicolons ? 'active' : ''}`} onClick={() => setAutoFixSemicolons(!autoFixSemicolons)}>
-              <div className="toggle-knob" />
-            </div>
-          </label>
-
-          {/* Memory leak detection toggle */}
-          <label className="toggle-label" title="Detect memory leaks and auto-free unfreed allocations at exit">
-            <ShieldCheck size={14} />
-            <span>Leak Check</span>
-            <div className={`toggle-switch ${memoryCheck ? 'active' : ''}`} onClick={() => setMemoryCheck(!memoryCheck)}>
-              <div className="toggle-knob" />
-            </div>
-          </label>
-
-          {/* View generated source button */}
-          <button 
-            className="glass-button source-button" 
-            onClick={() => setShowSourceView(true)}
-            disabled={!generatedSource}
-            title="View the generated C source code from the last execution"
-          >
-            <Code2 size={16} />
-            <span>Source</span>
-          </button>
-
-          <button className="glass-button primary" onClick={executeAll}>
-            Run All Cells
-          </button>
-        </div>
-      </header>
-
-      {/* Auto-fix notification */}
-      {autoFixMessages.length > 0 && (
-        <div className="autofix-notification glass-panel">
-          <Wrench size={14} />
-          <span>Auto-fixed: {autoFixMessages.join(', ')}</span>
-        </div>
-      )}
-
-      <main className="notebook-content">
-        {cells.map((cell, index) => (
-          <div
-            key={cell.id}
-            className={`cell-wrapper ${dragIndex === index ? 'dragging' : ''} ${dragOverIndex === index && dragIndex !== index ? 'drag-over' : ''}`}
-            data-cell-id={cell.id}
-            onDragOver={(e) => handleDragOver(e, index)}
-            onDrop={(e) => handleDrop(e, index)}
-            onDragEnd={handleDragEnd}
-          >
-            <div className="cell-with-handle">
-              <div
-                className="drag-handle"
-                draggable
-                onDragStart={() => handleDragStart(index)}
-                title="Drag to reorder"
-              >
-                <GripVertical size={16} />
-              </div>
-              {cell.type === 'markdown' ? (
-                <MarkdownCell
-                  cell={cell}
-                  onChange={updateCellCode}
-                  onDelete={deleteCell}
-                  onShiftEnter={handleShiftEnter}
-                />
-              ) : (
-                <CodeCell
-                  cell={cell}
-                  previousCode={cells
-                    .slice(0, index)
-                    .filter(c => c.type !== 'markdown')
-                    .map(c => c.code)}
-                  onChange={updateCellCode}
-                  onExecute={executeCell}
-                  onDelete={deleteCell}
-                  onShiftEnter={handleShiftEnter}
-                />
-              )}
-            </div>
-
-            <div className="add-cell-divider">
-              <button
-                className="add-cell-button"
-                onClick={() => addCell(index, 'code')}
-                aria-label="Add code cell below"
-                title="Add code cell"
-              >
-                <Plus size={16} />
-              </button>
-              <button
-                className="add-cell-button add-md-button"
-                onClick={() => addCell(index, 'markdown')}
-                aria-label="Add markdown cell below"
-                title="Add markdown cell"
-              >
-                <Type size={16} />
-              </button>
-              <div className="line" />
-            </div>
+    <div className={`notebook-layout ${sidebarOpen ? 'sidebar-open' : ''}`}>
+      <div className="notebook-container">
+        <header className="notebook-header glass-panel">
+          <div className="logo-container">
+            <div className="logo-icon">C</div>
+            <h1>C-Note</h1>
+            <span className="note-name-separator">/</span>
+            <input
+              className="note-name-input"
+              value={noteName}
+              onChange={(e) => { setNoteName(e.target.value); triggerAutosave(); }}
+              placeholder="Untitled"
+              spellCheck={false}
+            />
+            {hasFileHandle && (
+              <span className={`autosave-indicator ${autosaveStatus}`}>
+                {autosaveStatus === 'saving' && <><Loader size={12} className="spin" /> Saving...</>}
+                {autosaveStatus === 'saved' && <><Check size={12} /> Saved</>}
+                {autosaveStatus === 'error' && <>Save failed</>}
+              </span>
+            )}
           </div>
-        ))}
-      </main>
+          <div className="header-actions">
+            {/* Auto-fix semicolons toggle */}
+            <label className="toggle-label" title="Automatically fix missing semicolons and retry compilation">
+              <Wrench size={14} />
+              <span>Auto-fix ;</span>
+              <div className={`toggle-switch ${autoFixSemicolons ? 'active' : ''}`} onClick={() => setAutoFixSemicolons(!autoFixSemicolons)}>
+                <div className="toggle-knob" />
+              </div>
+            </label>
 
-      {/* Source View Modal */}
-      {showSourceView && generatedSource && (
-        <SourceView
-          code={generatedSource}
-          fileName={noteName || 'Untitled'}
-          onClose={() => setShowSourceView(false)}
-        />
-      )}
+            {/* Memory leak detection toggle */}
+            <label className="toggle-label" title="Detect memory leaks and auto-free unfreed allocations at exit">
+              <ShieldCheck size={14} />
+              <span>Leak Check</span>
+              <div className={`toggle-switch ${memoryCheck ? 'active' : ''}`} onClick={() => setMemoryCheck(!memoryCheck)}>
+                <div className="toggle-knob" />
+              </div>
+            </label>
+
+            {/* View generated source button */}
+            <button
+              className="glass-button source-button"
+              onClick={() => setShowSourceView(true)}
+              disabled={!generatedSource}
+              title="View the generated C source code from the last execution"
+            >
+              <Code2 size={16} />
+              <span>Source</span>
+            </button>
+
+            <button className="glass-button primary" onClick={executeAll}>
+              Run All
+            </button>
+
+            <button
+              className="glass-button sidebar-toggle-button"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              title="Toggle file panel"
+            >
+              {sidebarOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+            </button>
+          </div>
+        </header>
+
+        {/* Auto-fix notification */}
+        {autoFixMessages.length > 0 && (
+          <div className="autofix-notification glass-panel">
+            <Wrench size={14} />
+            <span>Auto-fixed: {autoFixMessages.join(', ')}</span>
+          </div>
+        )}
+
+        <main className="notebook-content">
+          {cells.map((cell, index) => (
+            <div
+              key={cell.id}
+              className={`cell-wrapper ${dragIndex === index ? 'dragging' : ''} ${dragOverIndex === index && dragIndex !== index ? 'drag-over' : ''}`}
+              data-cell-id={cell.id}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDrop={(e) => handleDrop(e, index)}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="cell-with-handle">
+                <div
+                  className="drag-handle"
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  title="Drag to reorder"
+                >
+                  <GripVertical size={16} />
+                </div>
+                {cell.type === 'markdown' ? (
+                  <MarkdownCell
+                    cell={cell}
+                    onChange={updateCellCode}
+                    onDelete={deleteCell}
+                    onShiftEnter={handleShiftEnter}
+                  />
+                ) : (
+                  <CodeCell
+                    cell={cell}
+                    previousCode={cells
+                      .slice(0, index)
+                      .filter(c => c.type !== 'markdown')
+                      .map(c => c.code)}
+                    onChange={updateCellCode}
+                    onExecute={executeCell}
+                    onDelete={deleteCell}
+                    onShiftEnter={handleShiftEnter}
+                  />
+                )}
+              </div>
+
+              <div className="add-cell-divider">
+                <button
+                  className="add-cell-button"
+                  onClick={() => addCell(index, 'code')}
+                  aria-label="Add code cell below"
+                  title="Add code cell"
+                >
+                  <Plus size={16} />
+                </button>
+                <button
+                  className="add-cell-button add-md-button"
+                  onClick={() => addCell(index, 'markdown')}
+                  aria-label="Add markdown cell below"
+                  title="Add markdown cell"
+                >
+                  <Type size={16} />
+                </button>
+                <div className="line" />
+              </div>
+            </div>
+          ))}
+        </main>
+
+        {/* Source View Modal */}
+        {showSourceView && generatedSource && (
+          <SourceView
+            code={generatedSource}
+            fileName={noteName || 'Untitled'}
+            onClose={() => setShowSourceView(false)}
+          />
+        )}
+      </div>
+
+      {/* Right Sidebar */}
+      <aside className={`sidebar-panel glass-panel ${sidebarOpen ? 'open' : ''}`}>
+        <h3 className="sidebar-title">File</h3>
+        <div className="sidebar-section">
+          <button className="sidebar-button" onClick={handleSave}>
+            <Save size={16} />
+            <span>Save</span>
+            <kbd>⌘S</kbd>
+          </button>
+          <button className="sidebar-button" onClick={handleSaveAs}>
+            <Save size={16} />
+            <span>Save As...</span>
+          </button>
+          <button className="sidebar-button" onClick={handleLoad}>
+            <FolderOpen size={16} />
+            <span>Open</span>
+          </button>
+        </div>
+      </aside>
     </div>
   );
 };
