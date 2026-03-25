@@ -197,17 +197,15 @@ const MEMORY_TRACKER_CODE = `
 typedef struct {
     void *ptr;
     size_t size;
-    int line;
 } _CNote_AllocEntry;
 
 static _CNote_AllocEntry _cnote_allocs[_CNOTE_MAX_ALLOCS];
 static int _cnote_alloc_count = 0;
 
-static void _cnote_track_add(void *ptr, size_t size, int line) {
+static void _cnote_track_add(void *ptr, size_t size) {
     if (!ptr || _cnote_alloc_count >= _CNOTE_MAX_ALLOCS) return;
     _cnote_allocs[_cnote_alloc_count].ptr = ptr;
     _cnote_allocs[_cnote_alloc_count].size = size;
-    _cnote_allocs[_cnote_alloc_count].line = line;
     _cnote_alloc_count++;
 }
 
@@ -220,22 +218,22 @@ static void _cnote_track_remove(void *ptr) {
     }
 }
 
-static void *_cnote_tracked_malloc(size_t size, int line) {
+static void *_cnote_tracked_malloc(size_t size) {
     void *ptr = malloc(size);
-    _cnote_track_add(ptr, size, line);
+    _cnote_track_add(ptr, size);
     return ptr;
 }
 
-static void *_cnote_tracked_calloc(size_t n, size_t size, int line) {
+static void *_cnote_tracked_calloc(size_t n, size_t size) {
     void *ptr = calloc(n, size);
-    _cnote_track_add(ptr, n * size, line);
+    _cnote_track_add(ptr, n * size);
     return ptr;
 }
 
-static void *_cnote_tracked_realloc(void *old, size_t size, int line) {
+static void *_cnote_tracked_realloc(void *old, size_t size) {
     if (old) _cnote_track_remove(old);
     void *ptr = realloc(old, size);
-    _cnote_track_add(ptr, size, line);
+    _cnote_track_add(ptr, size);
     return ptr;
 }
 
@@ -249,8 +247,8 @@ static void _cnote_leak_check(void) {
     size_t total = 0;
     fprintf(stderr, "\\n-----MEMORY_LEAK_REPORT-----\\n");
     for (int i = 0; i < _cnote_alloc_count; i++) {
-        fprintf(stderr, "LEAK: %zu bytes at %p (line %d)\\n",
-            _cnote_allocs[i].size, _cnote_allocs[i].ptr, _cnote_allocs[i].line);
+        fprintf(stderr, "LEAK: %zu bytes at %p\\n",
+            _cnote_allocs[i].size, _cnote_allocs[i].ptr);
         total += _cnote_allocs[i].size;
         free(_cnote_allocs[i].ptr);
     }
@@ -264,9 +262,9 @@ static void _cnote_init_leak_checker(void) {
 }
 
 /* Redirect user malloc/calloc/realloc/free to tracked versions */
-#define malloc(s)    _cnote_tracked_malloc(s, __LINE__)
-#define calloc(n,s)  _cnote_tracked_calloc(n, s, __LINE__)
-#define realloc(p,s) _cnote_tracked_realloc(p, s, __LINE__)
+#define malloc(s)    _cnote_tracked_malloc(s)
+#define calloc(n,s)  _cnote_tracked_calloc(n, s)
+#define realloc(p,s) _cnote_tracked_realloc(p, s)
 #define free(p)      _cnote_tracked_free(p)
 /* ── End Memory Leak Tracker ────────────────────────────────────── */
 `;
@@ -275,7 +273,7 @@ const LEAK_REPORT_START = '-----MEMORY_LEAK_REPORT-----';
 const LEAK_REPORT_END = '-----END_MEMORY_LEAK_REPORT-----';
 
 interface MemoryLeakInfo {
-  leaks: Array<{ bytes: number; line: number }>;
+  leaks: Array<{ bytes: number }>;
   totalBytes: number;
   totalAllocations: number;
 }
@@ -288,11 +286,11 @@ function parseLeakReport(stderr: string): { cleanStderr: string; leakInfo: Memor
   const reportBlock = stderr.slice(startIdx, endIdx !== -1 ? endIdx + LEAK_REPORT_END.length : undefined);
   const cleanStderr = stderr.slice(0, startIdx).trimEnd();
 
-  const leaks: Array<{ bytes: number; line: number }> = [];
-  const leakRegex = /LEAK:\s+(\d+)\s+bytes\s+at\s+\S+\s+\(line\s+(\d+)\)/g;
+  const leaks: Array<{ bytes: number }> = [];
+  const leakRegex = /LEAK:\s+(\d+)\s+bytes/g;
   let m;
   while ((m = leakRegex.exec(reportBlock)) !== null) {
-    leaks.push({ bytes: parseInt(m[1], 10), line: parseInt(m[2], 10) });
+    leaks.push({ bytes: parseInt(m[1], 10) });
   }
 
   const summaryRegex = /SUMMARY:\s+(\d+)\s+allocation\(s\),\s+(\d+)\s+bytes/;

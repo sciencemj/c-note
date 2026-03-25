@@ -13,13 +13,24 @@ interface SourceViewProps {
 export const SourceView: React.FC<SourceViewProps> = ({ code, fileName, onClose }) => {
   const [copied, setCopied] = useState(false);
 
-  // Hide CELL_OUTPUT_BOUNDARY printf/fflush lines from the source view
-  const cleanedCode = code.split('\n').filter((line, i, arr) => {
-    if (line.includes('CELL_OUTPUT_BOUNDARY')) return false;
-    // Also hide the fflush line that immediately follows the boundary printf
-    if (i > 0 && arr[i - 1]?.includes('CELL_OUTPUT_BOUNDARY') && line.trim().startsWith('fflush')) return false;
-    return true;
-  }).join('\n');
+  // Hide CELL_OUTPUT_BOUNDARY and memory tracker from the source view
+  const cleanedCode = (() => {
+    const lines = code.split('\n');
+    const result: string[] = [];
+    let inTracker = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.includes('C-Note Memory Leak Tracker')) { inTracker = true; continue; }
+      if (inTracker) {
+        if (line.includes('End Memory Leak Tracker')) { inTracker = false; }
+        continue;
+      }
+      if (line.includes('CELL_OUTPUT_BOUNDARY')) continue;
+      if (i > 0 && lines[i - 1]?.includes('CELL_OUTPUT_BOUNDARY') && line.trim().startsWith('fflush')) continue;
+      result.push(line);
+    }
+    return result.join('\n');
+  })();
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(cleanedCode);

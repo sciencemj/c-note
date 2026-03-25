@@ -6,7 +6,7 @@ import { Play, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import './CodeCell.css';
 
 export interface MemoryLeakInfo {
-  leaks: Array<{ bytes: number; line: number }>;
+  leaks: Array<{ bytes: number }>;
   totalBytes: number;
   totalAllocations: number;
 }
@@ -208,7 +208,7 @@ export const CodeCell: React.FC<CodeCellProps> = ({ cell, previousCode, onChange
                 </div>
                 <ul className="leak-details">
                   {cell.memoryLeaks.leaks.map((leak, i) => (
-                    <li key={i}>{formatBytes(leak.bytes)} not freed (line {leak.line})</li>
+                    <li key={i}>{formatBytes(leak.bytes)} not freed</li>
                   ))}
                 </ul>
               </div>
