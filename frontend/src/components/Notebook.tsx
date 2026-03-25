@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { CodeCell } from './CodeCell';
 import type { CellData } from './CodeCell';
 import { MarkdownCell } from './MarkdownCell';
 import { SourceView } from './SourceView';
-import { Plus, Code2, Wrench, Save, FolderOpen, Type, GripVertical } from 'lucide-react';
+import { Plus, Code2, Wrench, Save, FolderOpen, Type, GripVertical, Check, Loader } from 'lucide-react';
 import './Notebook.css';
 
 interface CNoteSaveFile {
@@ -19,6 +19,10 @@ interface CNoteSaveFile {
 }
 
 const API_URL = 'http://localhost:3001';
+const AUTOSAVE_INTERVAL = 30_000; // 30 seconds
+const AUTOSAVE_DEBOUNCE = 2_000; // 2 seconds after last edit
+
+type AutosaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 export const Notebook: React.FC = () => {
   const [cells, setCells] = useState<CellData[]>([
@@ -39,9 +43,63 @@ export const Notebook: React.FC = () => {
   const [autoFixMessages, setAutoFixMessages] = useState<string[]>([]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
+  const [hasFileHandle, setHasFileHandle] = useState(false);
 
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
+
+  const fileHandleRef = useRef<FileSystemFileHandle | null>(null);
+  const noteNameRef = useRef(noteName);
+  noteNameRef.current = noteName;
+  const autosaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const buildSaveData = useCallback((): CNoteSaveFile => ({
+    version: 1,
+    name: noteNameRef.current,
+    cells: cellsRef.current.map(cell => ({
+      id: cell.id,
+      type: cell.type,
+      code: cell.code,
+      output: cell.output,
+      error: cell.error,
+    })),
+  }), []);
+
+  const writeToFileHandle = useCallback(async (handle: FileSystemFileHandle) => {
+    setAutosaveStatus('saving');
+    try {
+      const writable = await handle.createWritable();
+      await writable.write(JSON.stringify(buildSaveData(), null, 2));
+      await writable.close();
+      setAutosaveStatus('saved');
+      setTimeout(() => setAutosaveStatus(prev => prev === 'saved' ? 'idle' : prev), 2000);
+    } catch {
+      setAutosaveStatus('error');
+    }
+  }, [buildSaveData]);
+
+  // Autosave on interval
+  useEffect(() => {
+    if (!fileHandleRef.current) return;
+    const interval = setInterval(() => {
+      if (fileHandleRef.current) {
+        writeToFileHandle(fileHandleRef.current);
+      }
+    }, AUTOSAVE_INTERVAL);
+    return () => clearInterval(interval);
+  }, [writeToFileHandle, autosaveStatus]);
+
+  // Debounced autosave on cell/name changes
+  const triggerAutosave = useCallback(() => {
+    if (!fileHandleRef.current) return;
+    if (autosaveDebounceRef.current) clearTimeout(autosaveDebounceRef.current);
+    autosaveDebounceRef.current = setTimeout(() => {
+      if (fileHandleRef.current) {
+        writeToFileHandle(fileHandleRef.current);
+      }
+    }, AUTOSAVE_DEBOUNCE);
+  }, [writeToFileHandle]);
 
   const addCell = (index: number, type: 'code' | 'markdown' = 'code'): string => {
     const newCell: CellData = {
@@ -60,6 +118,7 @@ export const Notebook: React.FC = () => {
 
   const updateCellCode = (id: string, code: string) => {
     setCells(cellsRef.current.map(cell => cell.id === id ? { ...cell, code } : cell));
+    triggerAutosave();
   };
 
   const deleteCell = (id: string) => {
@@ -227,20 +286,40 @@ export const Notebook: React.FC = () => {
     }
   };
 
-  const handleSave = () => {
-    const saveData: CNoteSaveFile = {
-      version: 1,
-      name: noteName,
-      cells: cellsRef.current.map(cell => ({
-        id: cell.id,
-        type: cell.type,
-        code: cell.code,
-        output: cell.output,
-        error: cell.error,
-      })),
-    };
+  const handleSave = async () => {
+    // If we already have a file handle, save directly
+    if (fileHandleRef.current) {
+      await writeToFileHandle(fileHandleRef.current);
+      return;
+    }
+    await handleSaveAs();
+  };
+
+  const handleSaveAs = async () => {
     const safeName = (noteName || 'Untitled').replace(/[^a-zA-Z0-9_\-]/g, '_');
-    const blob = new Blob([JSON.stringify(saveData, null, 2)], { type: 'application/json' });
+
+    // Try File System Access API (allows picking a path)
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: `${safeName}.cnote`,
+          types: [{
+            description: 'C-Note files',
+            accept: { 'application/json': ['.cnote'] },
+          }],
+        });
+        fileHandleRef.current = handle;
+        setHasFileHandle(true);
+        await writeToFileHandle(handle);
+        return;
+      } catch (err) {
+        // User cancelled the picker
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+      }
+    }
+
+    // Fallback: browser download
+    const blob = new Blob([JSON.stringify(buildSaveData(), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -249,7 +328,48 @@ export const Notebook: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleLoad = () => {
+  const loadFromData = (data: CNoteSaveFile) => {
+    if (!data.version || !data.cells || !Array.isArray(data.cells)) {
+      throw new Error('Invalid .cnote file');
+    }
+    setNoteName(data.name || 'Untitled');
+    setCells(data.cells.map(cell => ({
+      id: cell.id || crypto.randomUUID(),
+      type: cell.type || 'code',
+      code: cell.code,
+      output: cell.output,
+      error: cell.error,
+      status: (cell.error ? 'error' : cell.output ? 'success' : 'idle') as CellData['status'],
+    })));
+    setGeneratedSource(null);
+    setAutoFixMessages([]);
+  };
+
+  const handleLoad = async () => {
+    // Try File System Access API
+    if ('showOpenFilePicker' in window) {
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          types: [{
+            description: 'C-Note files',
+            accept: { 'application/json': ['.cnote'] },
+          }],
+          multiple: false,
+        });
+        const file = await handle.getFile();
+        const text = await file.text();
+        const data = JSON.parse(text) as CNoteSaveFile;
+        loadFromData(data);
+        fileHandleRef.current = handle; // Enable autosave to this file
+        setHasFileHandle(true);
+        setAutosaveStatus('idle');
+        return;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+      }
+    }
+
+    // Fallback: file input
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.cnote';
@@ -259,26 +379,29 @@ export const Notebook: React.FC = () => {
       try {
         const text = await file.text();
         const data = JSON.parse(text) as CNoteSaveFile;
-        if (!data.version || !data.cells || !Array.isArray(data.cells)) {
-          throw new Error('Invalid .cnote file');
-        }
-        setNoteName(data.name || 'Untitled');
-        setCells(data.cells.map(cell => ({
-          id: cell.id || crypto.randomUUID(),
-          type: cell.type || 'code',
-          code: cell.code,
-          output: cell.output,
-          error: cell.error,
-          status: (cell.error ? 'error' : cell.output ? 'success' : 'idle') as CellData['status'],
-        })));
-        setGeneratedSource(null);
-        setAutoFixMessages([]);
+        loadFromData(data);
+        fileHandleRef.current = null; // No handle from input fallback
+        setHasFileHandle(false);
       } catch {
         alert('Failed to load file. Make sure it is a valid .cnote file.');
       }
     };
     input.click();
   };
+
+  // Ctrl+S / Cmd+S to save
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSaveRef.current();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="notebook-container">
@@ -290,16 +413,26 @@ export const Notebook: React.FC = () => {
           <input
             className="note-name-input"
             value={noteName}
-            onChange={(e) => setNoteName(e.target.value)}
+            onChange={(e) => { setNoteName(e.target.value); triggerAutosave(); }}
             placeholder="Untitled"
             spellCheck={false}
           />
-          <button className="glass-button note-file-button" onClick={handleSave} title="Save as .cnote file">
+          <button className="glass-button note-file-button" onClick={handleSave} title="Save (Ctrl+S)">
             <Save size={14} />
           </button>
-          <button className="glass-button note-file-button" onClick={handleLoad} title="Load .cnote file">
+          <button className="glass-button note-file-button" onClick={handleSaveAs} title="Save As...">
+            <Save size={14} /><span className="save-as-label">As</span>
+          </button>
+          <button className="glass-button note-file-button" onClick={handleLoad} title="Open .cnote file">
             <FolderOpen size={14} />
           </button>
+          {hasFileHandle && (
+            <span className={`autosave-indicator ${autosaveStatus}`}>
+              {autosaveStatus === 'saving' && <><Loader size={12} className="spin" /> Saving...</>}
+              {autosaveStatus === 'saved' && <><Check size={12} /> Saved</>}
+              {autosaveStatus === 'error' && <>Save failed</>}
+            </span>
+          )}
         </div>
         <div className="header-actions">
           {/* Auto-fix semicolons toggle */}
