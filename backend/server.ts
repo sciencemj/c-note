@@ -185,8 +185,126 @@ function autoFixCellSemicolons(
   return { fixedCells, appliedFixes };
 }
 
+// ─── Memory leak tracker (injected into generated C code) ───────────────────
+const MEMORY_TRACKER_CODE = `
+/* ── C-Note Memory Leak Tracker ─────────────────────────────────── */
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+
+#define _CNOTE_MAX_ALLOCS 4096
+
+typedef struct {
+    void *ptr;
+    size_t size;
+    int line;
+} _CNote_AllocEntry;
+
+static _CNote_AllocEntry _cnote_allocs[_CNOTE_MAX_ALLOCS];
+static int _cnote_alloc_count = 0;
+
+static void _cnote_track_add(void *ptr, size_t size, int line) {
+    if (!ptr || _cnote_alloc_count >= _CNOTE_MAX_ALLOCS) return;
+    _cnote_allocs[_cnote_alloc_count].ptr = ptr;
+    _cnote_allocs[_cnote_alloc_count].size = size;
+    _cnote_allocs[_cnote_alloc_count].line = line;
+    _cnote_alloc_count++;
+}
+
+static void _cnote_track_remove(void *ptr) {
+    for (int i = 0; i < _cnote_alloc_count; i++) {
+        if (_cnote_allocs[i].ptr == ptr) {
+            _cnote_allocs[i] = _cnote_allocs[--_cnote_alloc_count];
+            return;
+        }
+    }
+}
+
+static void *_cnote_tracked_malloc(size_t size, int line) {
+    void *ptr = malloc(size);
+    _cnote_track_add(ptr, size, line);
+    return ptr;
+}
+
+static void *_cnote_tracked_calloc(size_t n, size_t size, int line) {
+    void *ptr = calloc(n, size);
+    _cnote_track_add(ptr, n * size, line);
+    return ptr;
+}
+
+static void *_cnote_tracked_realloc(void *old, size_t size, int line) {
+    if (old) _cnote_track_remove(old);
+    void *ptr = realloc(old, size);
+    _cnote_track_add(ptr, size, line);
+    return ptr;
+}
+
+static void _cnote_tracked_free(void *ptr) {
+    if (ptr) _cnote_track_remove(ptr);
+    free(ptr);
+}
+
+static void _cnote_leak_check(void) {
+    if (_cnote_alloc_count == 0) return;
+    size_t total = 0;
+    fprintf(stderr, "\\n-----MEMORY_LEAK_REPORT-----\\n");
+    for (int i = 0; i < _cnote_alloc_count; i++) {
+        fprintf(stderr, "LEAK: %zu bytes at %p (line %d)\\n",
+            _cnote_allocs[i].size, _cnote_allocs[i].ptr, _cnote_allocs[i].line);
+        total += _cnote_allocs[i].size;
+        free(_cnote_allocs[i].ptr);
+    }
+    fprintf(stderr, "SUMMARY: %d allocation(s), %zu bytes leaked — auto-freed\\n", _cnote_alloc_count, total);
+    fprintf(stderr, "-----END_MEMORY_LEAK_REPORT-----\\n");
+}
+
+__attribute__((constructor))
+static void _cnote_init_leak_checker(void) {
+    atexit(_cnote_leak_check);
+}
+
+/* Redirect user malloc/calloc/realloc/free to tracked versions */
+#define malloc(s)    _cnote_tracked_malloc(s, __LINE__)
+#define calloc(n,s)  _cnote_tracked_calloc(n, s, __LINE__)
+#define realloc(p,s) _cnote_tracked_realloc(p, s, __LINE__)
+#define free(p)      _cnote_tracked_free(p)
+/* ── End Memory Leak Tracker ────────────────────────────────────── */
+`;
+
+const LEAK_REPORT_START = '-----MEMORY_LEAK_REPORT-----';
+const LEAK_REPORT_END = '-----END_MEMORY_LEAK_REPORT-----';
+
+interface MemoryLeakInfo {
+  leaks: Array<{ bytes: number; line: number }>;
+  totalBytes: number;
+  totalAllocations: number;
+}
+
+function parseLeakReport(stderr: string): { cleanStderr: string; leakInfo: MemoryLeakInfo | null } {
+  const startIdx = stderr.indexOf(LEAK_REPORT_START);
+  if (startIdx === -1) return { cleanStderr: stderr, leakInfo: null };
+
+  const endIdx = stderr.indexOf(LEAK_REPORT_END);
+  const reportBlock = stderr.slice(startIdx, endIdx !== -1 ? endIdx + LEAK_REPORT_END.length : undefined);
+  const cleanStderr = stderr.slice(0, startIdx).trimEnd();
+
+  const leaks: Array<{ bytes: number; line: number }> = [];
+  const leakRegex = /LEAK:\s+(\d+)\s+bytes\s+at\s+\S+\s+\(line\s+(\d+)\)/g;
+  let m;
+  while ((m = leakRegex.exec(reportBlock)) !== null) {
+    leaks.push({ bytes: parseInt(m[1], 10), line: parseInt(m[2], 10) });
+  }
+
+  const summaryRegex = /SUMMARY:\s+(\d+)\s+allocation\(s\),\s+(\d+)\s+bytes/;
+  const sm = summaryRegex.exec(reportBlock);
+  const totalAllocations = sm ? parseInt(sm[1], 10) : leaks.length;
+  const totalBytes = sm ? parseInt(sm[2], 10) : leaks.reduce((a, l) => a + l.bytes, 0);
+
+  return { cleanStderr, leakInfo: { leaks, totalBytes, totalAllocations } };
+}
+
 // ─── Build final C code from cells ─────────────────────────────────────────────
-function buildFinalCode(cells: string[]): string {
+function buildFinalCode(cells: string[], memoryCheckEnabled = false): string {
   const aggregatedIncludes = new Set<string>();
   const aggregatedGlobals: string[] = [];
   const aggregatedMain: string[] = [];
@@ -214,9 +332,13 @@ function buildFinalCode(cells: string[]): string {
     .map(line => line.trim() ? '    ' + line : '')
     .join('\n');
 
+  // When memory check is enabled, inject the tracker after includes but before globals.
+  // The tracker already includes stdlib.h so we ensure it's present.
+  const trackerBlock = memoryCheckEnabled ? MEMORY_TRACKER_CODE : '';
+
   return `
 ${Array.from(aggregatedIncludes).join('\n')}
-
+${trackerBlock}
 ${aggregatedGlobals.join('\n')}
 
 int main() {
@@ -279,7 +401,7 @@ process.on('SIGTERM', async () => { await cleanupAll(); process.exit(0); });
 const OUTPUT_BOUNDARY = '-----CELL_OUTPUT_BOUNDARY-----';
 
 app.post('/execute', async (req, res) => {
-  const { cells, autoFixSemicolonsEnabled } = req.body;
+  const { cells, autoFixSemicolonsEnabled, memoryCheckEnabled } = req.body;
 
   if (!cells || !Array.isArray(cells) || cells.length === 0) {
     return res.status(400).json({ error: 'No cells provided' });
@@ -300,7 +422,7 @@ app.post('/execute', async (req, res) => {
 
   try {
     let executionCells = [...cells];
-    let finalCode = buildFinalCode(executionCells);
+    let finalCode = buildFinalCode(executionCells, !!memoryCheckEnabled);
     let autoFixApplied: string[] = [];
     let fixedCells: string[] | undefined;
 
@@ -320,7 +442,7 @@ app.post('/execute', async (req, res) => {
         executionCells = result.fixedCells;
         fixedCells = result.fixedCells;
         autoFixApplied.push(...result.appliedFixes);
-        finalCode = buildFinalCode(executionCells);
+        finalCode = buildFinalCode(executionCells, !!memoryCheckEnabled);
         await writeFile(cFilePath, finalCode);
         compileResult = await compileCode(cFilePath, outFilePath);
       }
@@ -362,7 +484,7 @@ app.post('/execute', async (req, res) => {
 
     // Parse the output to only return the latest cell's output
     const { output, error } = executionResult;
-    
+
     let currentCellOutput = output;
     if (output.includes(`${OUTPUT_BOUNDARY}\n`)) {
       currentCellOutput = output.split(`${OUTPUT_BOUNDARY}\n`).pop() || '';
@@ -370,12 +492,22 @@ app.post('/execute', async (req, res) => {
       currentCellOutput = output.split(OUTPUT_BOUNDARY).pop() || '';
     }
 
+    // Parse memory leak report from stderr if memory check was enabled
+    let leakInfo: MemoryLeakInfo | null = null;
+    let cleanError = error.trim();
+    if (memoryCheckEnabled) {
+      const parsed = parseLeakReport(cleanError);
+      cleanError = parsed.cleanStderr;
+      leakInfo = parsed.leakInfo;
+    }
+
     res.json({
       output: currentCellOutput,
-      error: error.trim() || undefined,
+      error: cleanError || undefined,
       generatedCode: finalCode,
       autoFixApplied,
-      fixedCells
+      fixedCells,
+      memoryLeaks: leakInfo
     });
 
   } catch (error) {

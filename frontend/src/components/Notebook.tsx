@@ -3,7 +3,7 @@ import { CodeCell } from './CodeCell';
 import type { CellData } from './CodeCell';
 import { MarkdownCell } from './MarkdownCell';
 import { SourceView } from './SourceView';
-import { Plus, Code2, Wrench, Save, FolderOpen, Type, GripVertical, Check, Loader } from 'lucide-react';
+import { Plus, Code2, Wrench, Save, FolderOpen, Type, GripVertical, Check, Loader, ShieldCheck } from 'lucide-react';
 import './Notebook.css';
 
 interface CNoteSaveFile {
@@ -38,6 +38,7 @@ export const Notebook: React.FC = () => {
 
   const [noteName, setNoteName] = useState('Untitled');
   const [autoFixSemicolons, setAutoFixSemicolons] = useState(true);
+  const [memoryCheck, setMemoryCheck] = useState(false);
   const [generatedSource, setGeneratedSource] = useState<string | null>(null);
   const [showSourceView, setShowSourceView] = useState(false);
   const [autoFixMessages, setAutoFixMessages] = useState<string[]>([]);
@@ -182,7 +183,8 @@ export const Notebook: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cells: executionContext,
-          autoFixSemicolonsEnabled: autoFixSemicolons
+          autoFixSemicolonsEnabled: autoFixSemicolons,
+          memoryCheckEnabled: memoryCheck
         }),
       });
 
@@ -221,7 +223,8 @@ export const Notebook: React.FC = () => {
               code: fixedCode ?? cell.code,
               status: response.ok && !data.error ? 'success' : (data.error ? 'error' : 'success'),
               output: data.output || null,
-              error: data.error || null
+              error: data.error || null,
+              memoryLeaks: data.memoryLeaks || null
             };
           }
 
@@ -242,7 +245,7 @@ export const Notebook: React.FC = () => {
         } : cell
       ));
     }
-  }, [autoFixSemicolons]);
+  }, [autoFixSemicolons, memoryCheck]);
 
   const focusNextCodeCell = useCallback((fromId: string) => {
     const currentCells = cellsRef.current;
@@ -440,6 +443,15 @@ export const Notebook: React.FC = () => {
             <Wrench size={14} />
             <span>Auto-fix ;</span>
             <div className={`toggle-switch ${autoFixSemicolons ? 'active' : ''}`} onClick={() => setAutoFixSemicolons(!autoFixSemicolons)}>
+              <div className="toggle-knob" />
+            </div>
+          </label>
+
+          {/* Memory leak detection toggle */}
+          <label className="toggle-label" title="Detect memory leaks and auto-free unfreed allocations at exit">
+            <ShieldCheck size={14} />
+            <span>Leak Check</span>
+            <div className={`toggle-switch ${memoryCheck ? 'active' : ''}`} onClick={() => setMemoryCheck(!memoryCheck)}>
               <div className="toggle-knob" />
             </div>
           </label>

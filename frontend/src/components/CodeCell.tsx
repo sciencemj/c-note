@@ -2,8 +2,14 @@ import { useState, useMemo } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { cpp } from '@codemirror/lang-cpp';
 import { autocompletion, type CompletionContext, type Completion } from '@codemirror/autocomplete';
-import { Play, Loader2, Trash2 } from 'lucide-react';
+import { Play, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import './CodeCell.css';
+
+export interface MemoryLeakInfo {
+  leaks: Array<{ bytes: number; line: number }>;
+  totalBytes: number;
+  totalAllocations: number;
+}
 
 export interface CellData {
   id: string;
@@ -12,6 +18,7 @@ export interface CellData {
   output: string | null;
   error: string | null;
   status: 'idle' | 'running' | 'success' | 'error';
+  memoryLeaks?: MemoryLeakInfo | null;
 }
 
 interface CodeCellProps {
@@ -105,6 +112,12 @@ function extractIdentifiers(code: string): Completion[] {
   return completions;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export const CodeCell: React.FC<CodeCellProps> = ({ cell, previousCode, onChange, onExecute, onDelete, onShiftEnter }) => {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -183,10 +196,23 @@ export const CodeCell: React.FC<CodeCellProps> = ({ cell, previousCode, onChange
           }}
         />
         
-        {(cell.output || cell.error) && (
+        {(cell.output || cell.error || cell.memoryLeaks) && (
           <div className={`cell-output ${cell.error ? 'has-error' : ''}`}>
             {cell.output && <pre className="stdout">{cell.output}</pre>}
             {cell.error && <pre className="stderr">{cell.error}</pre>}
+            {cell.memoryLeaks && (
+              <div className="memory-leak-warning">
+                <div className="leak-header">
+                  <AlertTriangle size={14} />
+                  <span>Memory Leak Detected — {cell.memoryLeaks.totalAllocations} allocation(s), {formatBytes(cell.memoryLeaks.totalBytes)} leaked (auto-freed)</span>
+                </div>
+                <ul className="leak-details">
+                  {cell.memoryLeaks.leaks.map((leak, i) => (
+                    <li key={i}>{formatBytes(leak.bytes)} not freed (line {leak.line})</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </div>

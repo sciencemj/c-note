@@ -170,3 +170,35 @@
 .cm-completionIcon-type::after { content: "T"; }
 .cm-completionIcon-class::after { content: "S"; }
 .cm-completionIcon-constant::after { content: "#"; }
+
+/* ─── Memory leak warning ──────────────────────────────────────────────────── */
+.memory-leak-warning {
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: rgba(234, 179, 8, 0.08);
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  border-radius: 6px;
+  color: #eab308;
+  font-size: 0.8rem;
+}
+
+.leak-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.leak-details {
+  margin: 6px 0 0 20px;
+  padding: 0;
+  font-weight: 400;
+  opacity: 0.85;
+  list-style: disc;
+}
+
+.leak-details li {
+  margin: 2px 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
